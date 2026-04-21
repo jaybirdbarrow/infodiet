@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Information Diet Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --color-navy:      #0D1B2A;
+    --color-charcoal:  #1C2B3A;
+    --color-sky:       #4A9FD5;
+    --color-off-white: #F4F1EC;
+    --color-slate:     #3D4F61;
+    --color-muted:     rgba(244, 241, 236, 0.55);
+
+    --bucket-1: #C8A96A;
+    --bucket-2: #4A9FD5;
+    --bucket-3: #8FB89C;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    background: var(--color-navy);
+    color: var(--color-off-white);
+    font-family: 'DM Sans', -apple-system, Helvetica, sans-serif;
+    font-weight: 300;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    letter-spacing: 0.01em;
+    overscroll-behavior: none;
+  }
+
+  body {
+    background:
+      radial-gradient(ellipse at center, rgba(74, 159, 213, 0.07) 0%, transparent 55%),
+      radial-gradient(ellipse at bottom, rgba(28, 43, 58, 0.5) 0%, transparent 70%),
+      var(--color-navy);
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+    opacity: 0.04;
+    pointer-events: none;
+    mix-blend-mode: overlay;
+    z-index: 1;
+  }
+
+  /* ───── VIEWPORT + PANNABLE CANVAS ───── */
+  .viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    z-index: 3;
+    touch-action: none; /* we'll handle touches manually */
+    cursor: grab;
+  }
+
+  .viewport.panning {
+    cursor: grabbing;
+  }
+
+  .canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+
+  svg.connections {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .connection-line {
+    fill: none;
+    stroke-width: 1;
+    opacity: 0.4;
+    transition: opacity 0.4s ease, stroke-width 0.4s ease;
+  }
+
+  .connection-line.active {
+    opacity: 0.95;
+    stroke-width: 1.5;
+  }
+
+  .connection-line.faded {
+    opacity: 0;
+  }
+
+  .connection-child {
+    fill: none;
+    stroke-width: 0.8;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+
+  .connection-child.visible {
+    opacity: 0.5;
+  }
+
+  /* ───── CENTER NODE ───── */
+  .center-node {
+    position: absolute;
+    width: 116px;
+    height: 116px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, var(--color-charcoal), var(--color-navy));
+    border: 1px solid rgba(74, 159, 213, 0.4);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    z-index: 5;
+    box-shadow:
+      0 0 0 6px rgba(74, 159, 213, 0.03),
+      0 0 0 16px rgba(74, 159, 213, 0.015),
+      0 16px 48px rgba(0, 0, 0, 0.5);
+    animation: softPulse 4s ease-in-out infinite;
+    transition: opacity 0.4s ease;
+    transform: translate(-50%, -50%);
+  }
+
+  .center-node.faded {
+    opacity: 0.25;
+  }
+
+  .center-node .label {
+    font-size: 8px;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: var(--color-slate);
+    margin-bottom: 5px;
+  }
+
+  .center-node .title {
+    font-family: 'Playfair Display', serif;
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.2;
+    color: var(--color-off-white);
+    padding: 0 12px;
+  }
+
+  .center-node .title em {
+    font-style: italic;
+    color: var(--color-sky);
+  }
+
+  @keyframes softPulse {
+    0%, 100% { box-shadow: 0 0 0 6px rgba(74, 159, 213, 0.03), 0 0 0 16px rgba(74, 159, 213, 0.015), 0 16px 48px rgba(0, 0, 0, 0.5); }
+    50% { box-shadow: 0 0 0 10px rgba(74, 159, 213, 0.05), 0 0 0 24px rgba(74, 159, 213, 0.02), 0 16px 48px rgba(0, 0, 0, 0.5); }
+  }
+
+  /* ───── BUCKET NODES ───── */
+  .bucket {
+    position: absolute;
+    width: 82px; /* same as circle — label is absolutely positioned outside */
+    cursor: pointer;
+    z-index: 4;
+    transform: translate(-50%, -50%);
+    user-select: none;
+    -webkit-user-select: none;
+    transition: opacity 0.4s ease, filter 0.4s ease;
+  }
+
+  .bucket-circle {
+    width: 82px;
+    height: 82px;
+    border-radius: 50%;
+    background: var(--color-charcoal);
+    border: 2px solid var(--bucket-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    position: relative;
+    z-index: 2;
+  }
+
+  .bucket-number {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-weight: 400;
+    font-size: 30px;
+    color: var(--bucket-color);
+    line-height: 1;
+    transition: color 0.35s ease;
+  }
+
+  /* Label is a separate absolutely-positioned element so it can appear on click only */
+  .bucket-label {
+    position: absolute;
+    top: calc(100% + 14px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px);
+    width: 180px;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .bucket.active .bucket-label {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    transition-delay: 0.15s;
+  }
+
+  .bucket-kicker {
+    font-size: 8.5px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--bucket-color);
+    margin-bottom: 5px;
+    font-weight: 500;
+  }
+
+  .bucket-name {
+    font-family: 'Playfair Display', serif;
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1.2;
+    color: var(--color-off-white);
+    margin-bottom: 4px;
+    letter-spacing: -0.01em;
+  }
+
+  .bucket-tagline {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: var(--color-muted);
+    line-height: 1.35;
+  }
+
+  .bucket.active .bucket-circle {
+    transform: scale(1.12);
+    background: var(--bucket-color);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 44px var(--bucket-glow);
+  }
+
+  .bucket.active .bucket-number {
+    color: var(--color-navy);
+  }
+
+  .bucket.faded {
+    opacity: 0.22;
+    filter: saturate(0.35);
+  }
+
+  .bucket-1 { --bucket-color: var(--bucket-1); --bucket-glow: rgba(200, 169, 106, 0.35); }
+  .bucket-2 { --bucket-color: var(--bucket-2); --bucket-glow: rgba(74, 159, 213, 0.35); }
+  .bucket-3 { --bucket-color: var(--bucket-3); --bucket-glow: rgba(143, 184, 156, 0.35); }
+
+  /* ───── CHILD NODES ───── */
+  .child-node {
+    position: absolute;
+    width: 138px;
+    transform: translate(-50%, -50%) translateY(6px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+    z-index: 3;
+    text-align: center;
+  }
+
+  .child-node.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) translateY(0);
+  }
+
+  .child-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--child-color);
+    margin: 0 auto 6px;
+    box-shadow: 0 0 12px var(--child-color);
+  }
+
+  .child-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-off-white);
+    line-height: 1.25;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .child-example {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 10px;
+    color: var(--color-muted);
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Reset button — small, subtle, bottom right */
+  .reset-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(28, 43, 58, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--color-muted);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .reset-btn.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .reset-btn:hover {
+    border-color: var(--color-sky);
+    color: var(--color-sky);
+  }
+</style>
+</head>
+<body>
+
+<div class="viewport" id="viewport">
+  <div class="canvas" id="canvas">
+    <svg class="connections" id="connections"></svg>
+    <div class="center-node" id="centerNode">
+      <div class="label">The Diet</div>
+      <div class="title">What's worth<br>your <em>attention</em></div>
+    </div>
+  </div>
+</div>
+
+<button class="reset-btn" id="resetBtn" aria-label="Reset view">⟲</button>
+
+<script>
+  const bucketData = {
+    1: {
+      kicker: 'The Unavoidable',
+      name: 'What everyone<br>will talk about',
+      tagline: 'Enough to not be lost.',
+      children: [
+        { label: 'Elections', example: 'Outcomes, not polls.' },
+        { label: 'Wars', example: 'Shape, not updates.' },
+        { label: 'Market breaks', example: 'Rate moves, crashes.' },
+        { label: 'Tech shifts', example: 'AI, platforms.' },
+        { label: 'Public health', example: 'Pandemics, outbreaks.' }
+      ]
+    },
+    2: {
+      kicker: 'The Proximate',
+      name: 'What actually<br>touches your life',
+      tagline: 'Where news becomes useful.',
+      children: [
+        { label: 'Your city', example: 'Policy, budgets.' },
+        { label: 'Your industry', example: 'Trends, threats.' },
+        { label: 'Your family', example: 'Schools, health.' },
+        { label: 'Your money', example: 'Taxes, housing.' },
+        { label: 'Your community', example: 'The places you are.' }
+      ]
+    },
+    3: {
+      kicker: 'The Chosen',
+      name: "What you're<br>curious about",
+      tagline: 'Nourishment, not obligation.',
+      children: [
+        { label: 'A region', example: 'One place, deeply.' },
+        { label: 'A craft', example: 'Your work, your art.' },
+        { label: 'A thinker', example: 'One trusted voice.' },
+        { label: 'A thread', example: 'A movement to track.' },
+        { label: 'A history', example: 'The past, read well.' }
+      ]
+    }
+  };
+
+  const romans = { 1: 'I', 2: 'II', 3: 'III' };
+  const colorMap = { 1: '#C8A96A', 2: '#4A9FD5', 3: '#8FB89C' };
+
+  // Bucket angles — triangle (I top, II bottom-left, III bottom-right)
+  const bucketAngles = { 1: -90, 2: 150, 3: 30 };
+
+  // Canvas is a large fixed space — buckets live in canvas coordinates
+  // This way the whole thing can pan/zoom as one
+  const CANVAS_SIZE = 2000; // virtual canvas — big enough that children always have room
+  const CENTER = CANVAS_SIZE / 2;
+  const BUCKET_RADIUS = 340;
+  const CHILD_RADIUS = 230;
+
+  let activeBucket = null;
+  const positions = {
+    center: { x: CENTER, y: CENTER },
+    buckets: {},
+    children: {}
+  };
+
+  const viewport = document.getElementById('viewport');
+  const canvas = document.getElementById('canvas');
+  const connectionsSvg = document.getElementById('connections');
+  const centerNode = document.getElementById('centerNode');
+  const resetBtn = document.getElementById('resetBtn');
+
+  // Pan + zoom state
+  let transform = { x: 0, y: 0, scale: 1 };
+  let initialTransform = { x: 0, y: 0, scale: 1 };
+
+  function applyTransform() {
+    canvas.style.transform = `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`;
+    // Show reset button if user has panned or zoomed meaningfully
+    const moved = Math.abs(transform.x - initialTransform.x) > 20 ||
+                  Math.abs(transform.y - initialTransform.y) > 20 ||
+                  Math.abs(transform.scale - initialTransform.scale) > 0.05;
+    if (moved) resetBtn.classList.add('visible');
+    else resetBtn.classList.remove('visible');
+  }
+
+  function buildBuckets() {
+    [1, 2, 3].forEach(id => {
+      const data = bucketData[id];
+      const bucket = document.createElement('div');
+      bucket.className = `bucket bucket-${id}`;
+      bucket.dataset.bucket = id;
+      bucket.innerHTML = `
+        <div class="bucket-circle"><div class="bucket-number">${romans[id]}</div></div>
+        <div class="bucket-label">
+          <div class="bucket-kicker">${data.kicker}</div>
+          <div class="bucket-name">${data.name}</div>
+          <div class="bucket-tagline">${data.tagline}</div>
+        </div>
+      `;
+      bucket.addEventListener('click', (e) => {
+        if (didPan) return; // ignore if this "click" was actually a pan
+        e.stopPropagation();
+        handleBucketClick(id);
+      });
+      canvas.appendChild(bucket);
+    });
+  }
+
+  function computeLayout() {
+    // Size canvas so everything fits within the virtual space
+    canvas.style.width = `${CANVAS_SIZE}px`;
+    canvas.style.height = `${CANVAS_SIZE}px`;
+
+    // Position center
+    centerNode.style.left = `${CENTER}px`;
+    centerNode.style.top = `${CENTER}px`;
+
+    // Position buckets
+    [1, 2, 3].forEach(id => {
+      const angle = (bucketAngles[id] * Math.PI) / 180;
+      const bx = CENTER + Math.cos(angle) * BUCKET_RADIUS;
+      const by = CENTER + Math.sin(angle) * BUCKET_RADIUS;
+      positions.buckets[id] = { x: bx, y: by, angle: bucketAngles[id] };
+
+      const el = document.querySelector(`.bucket-${id}`);
+      if (el) {
+        el.style.left = `${bx}px`;
+        el.style.top = `${by}px`;
+      }
+    });
+
+    // Precompute child positions with a wide enough arc to prevent overlap
+    [1, 2, 3].forEach(id => {
+      const bucketPos = positions.buckets[id];
+      const children = bucketData[id].children;
+      const parentAngle = bucketPos.angle;
+
+      // Generous arc — 150deg for 5 children = ~37deg between each
+      // Combined with the radius, this guarantees no text overlap
+      const arcSpread = 160;
+      const startAngle = parentAngle - arcSpread / 2;
+      const step = children.length > 1 ? arcSpread / (children.length - 1) : 0;
+
+      positions.children[id] = children.map((child, i) => {
+        const angleDeg = startAngle + step * i;
+        const angle = (angleDeg * Math.PI) / 180;
+        return {
+          x: bucketPos.x + Math.cos(angle) * CHILD_RADIUS,
+          y: bucketPos.y + Math.sin(angle) * CHILD_RADIUS,
+          label: child.label,
+          example: child.example
+        };
+      });
+    });
+
+    // Size the SVG to fill the canvas
+    connectionsSvg.setAttribute('viewBox', `0 0 ${CANVAS_SIZE} ${CANVAS_SIZE}`);
+    connectionsSvg.setAttribute('width', CANVAS_SIZE);
+    connectionsSvg.setAttribute('height', CANVAS_SIZE);
+    connectionsSvg.style.width = `${CANVAS_SIZE}px`;
+    connectionsSvg.style.height = `${CANVAS_SIZE}px`;
+
+    drawMainConnections();
+    fitToViewport();
+  }
+
+  function fitToViewport() {
+    // Compute scale so the bucket triangle fits nicely in the viewport
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // The visible area we need to show: roughly center + bucket radius + label space
+    // This ensures a good default view on load
+    const visibleDim = (BUCKET_RADIUS + 80) * 2; // diameter plus some padding for labels
+    const scale = Math.min(vw / visibleDim, vh / visibleDim, 1);
+
+    // Center the canvas in the viewport at this scale
+    const tx = (vw - CANVAS_SIZE * scale) / 2;
+    const ty = (vh - CANVAS_SIZE * scale) / 2;
+
+    transform = { x: tx, y: ty, scale };
+    initialTransform = { ...transform };
+    applyTransform();
+  }
+
+  function drawMainConnections() {
+    connectionsSvg.innerHTML = '';
+
+    const { x: cx, y: cy } = positions.center;
+
+    [1, 2, 3].forEach(id => {
+      const { x, y } = positions.buckets[id];
+      const dx = x - cx;
+      const dy = y - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const shortenEnd = 49;
+      const shortenStart = 62;
+
+      const sx = cx + (dx / dist) * shortenStart;
+      const sy = cy + (dy / dist) * shortenStart;
+      const ex = x - (dx / dist) * shortenEnd;
+      const ey = y - (dy / dist) * shortenEnd;
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('class', 'connection-line');
+      line.setAttribute('x1', sx);
+      line.setAttribute('y1', sy);
+      line.setAttribute('x2', ex);
+      line.setAttribute('y2', ey);
+      line.setAttribute('stroke', colorMap[id]);
+      line.dataset.bucket = id;
+      connectionsSvg.appendChild(line);
+    });
+  }
+
+  function renderChildren(bucketId) {
+    document.querySelectorAll('.child-node').forEach(n => n.remove());
+    document.querySelectorAll('.connection-child').forEach(l => l.remove());
+
+    const childPositions = positions.children[bucketId];
+    const bucketPos = positions.buckets[bucketId];
+    const color = colorMap[bucketId];
+
+    childPositions.forEach((pos, i) => {
+      const dx = pos.x - bucketPos.x;
+      const dy = pos.y - bucketPos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const startOff = 46;
+      const endOff = 28;
+
+      const sx = bucketPos.x + (dx / dist) * startOff;
+      const sy = bucketPos.y + (dy / dist) * startOff;
+      const ex = pos.x - (dx / dist) * endOff;
+      const ey = pos.y - (dy / dist) * endOff;
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('class', 'connection-child');
+      line.setAttribute('x1', sx);
+      line.setAttribute('y1', sy);
+      line.setAttribute('x2', ex);
+      line.setAttribute('y2', ey);
+      line.setAttribute('stroke', color);
+      connectionsSvg.appendChild(line);
+      setTimeout(() => line.classList.add('visible'), 120 + i * 70);
+
+      const node = document.createElement('div');
+      node.className = 'child-node';
+      node.style.left = `${pos.x}px`;
+      node.style.top = `${pos.y}px`;
+      node.style.setProperty('--child-color', color);
+      node.innerHTML = `
+        <div class="child-dot"></div>
+        <div class="child-label">${pos.label}</div>
+        <div class="child-example">${pos.example}</div>
+      `;
+      canvas.appendChild(node);
+      setTimeout(() => node.classList.add('visible'), 180 + i * 70);
+    });
+  }
+
+  function handleBucketClick(id) {
+    if (activeBucket === id) {
+      closeActive();
+      return;
+    }
+    activateBucket(id);
+  }
+
+  function activateBucket(id) {
+    document.querySelectorAll('.bucket').forEach(b => {
+      if (b.dataset.bucket !== String(id)) {
+        b.classList.add('faded');
+        b.classList.remove('active');
+      } else {
+        b.classList.remove('faded');
+        b.classList.add('active');
+      }
+    });
+
+    document.querySelectorAll('.connection-line').forEach(l => {
+      if (l.dataset.bucket === String(id)) {
+        l.classList.add('active');
+        l.classList.remove('faded');
+      } else {
+        l.classList.remove('active');
+        l.classList.add('faded');
+      }
+    });
+
+    centerNode.classList.add('faded');
+    activeBucket = id;
+    renderChildren(id);
+  }
+
+  function closeActive() {
+    document.querySelectorAll('.bucket').forEach(b => {
+      b.classList.remove('active');
+      b.classList.remove('faded');
+    });
+    document.querySelectorAll('.connection-line').forEach(l => {
+      l.classList.remove('active');
+      l.classList.remove('faded');
+    });
+    document.querySelectorAll('.child-node').forEach(n => n.remove());
+    document.querySelectorAll('.connection-child').forEach(l => l.remove());
+    centerNode.classList.remove('faded');
+    activeBucket = null;
+  }
+
+  // ───── PAN & ZOOM ─────
+  let isPanning = false;
+  let didPan = false;
+  let panStart = { x: 0, y: 0, tx: 0, ty: 0 };
+  let pinchStart = null;
+
+  function getPointerPos(e) {
+    if (e.touches) {
+      return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+    return { x: e.clientX, y: e.clientY };
+  }
+
+  function getPinchData(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const midX = (touches[0].clientX + touches[1].clientX) / 2;
+    const midY = (touches[0].clientY + touches[1].clientY) / 2;
+    return { dist, midX, midY };
+  }
+
+  viewport.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      isPanning = true;
+      didPan = false;
+      const pos = getPointerPos(e);
+      panStart = { x: pos.x, y: pos.y, tx: transform.x, ty: transform.y };
+    } else if (e.touches.length === 2) {
+      isPanning = false;
+      const pinch = getPinchData(e.touches);
+      pinchStart = {
+        dist: pinch.dist,
+        midX: pinch.midX,
+        midY: pinch.midY,
+        scale: transform.scale,
+        tx: transform.x,
+        ty: transform.y
+      };
+    }
+  }, { passive: true });
+
+  viewport.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 1 && isPanning) {
+      const pos = getPointerPos(e);
+      const dx = pos.x - panStart.x;
+      const dy = pos.y - panStart.y;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) didPan = true;
+      transform.x = panStart.tx + dx;
+      transform.y = panStart.ty + dy;
+      applyTransform();
+    } else if (e.touches.length === 2 && pinchStart) {
+      const pinch = getPinchData(e.touches);
+      // Amplify the pinch ratio so small finger movements = bigger zoom change
+      const rawRatio = pinch.dist / pinchStart.dist;
+      const amplified = Math.pow(rawRatio, 2.2);
+      const newScale = Math.max(0.3, Math.min(6, pinchStart.scale * amplified));
+
+      // Zoom around pinch midpoint
+      const scaleDelta = newScale / pinchStart.scale;
+      transform.scale = newScale;
+      transform.x = pinchStart.midX - (pinchStart.midX - pinchStart.tx) * scaleDelta;
+      transform.y = pinchStart.midY - (pinchStart.midY - pinchStart.ty) * scaleDelta;
+      didPan = true;
+      applyTransform();
+    }
+  }, { passive: true });
+
+  viewport.addEventListener('touchend', (e) => {
+    if (e.touches.length === 0) {
+      isPanning = false;
+      pinchStart = null;
+      setTimeout(() => { didPan = false; }, 50);
+    } else if (e.touches.length === 1) {
+      pinchStart = null;
+      const pos = getPointerPos(e);
+      panStart = { x: pos.x, y: pos.y, tx: transform.x, ty: transform.y };
+      isPanning = true;
+    }
+  }, { passive: true });
+
+  // Mouse pan (desktop)
+  viewport.addEventListener('mousedown', (e) => {
+    if (e.target.closest('.bucket') || e.target.closest('.center-node')) return;
+    isPanning = true;
+    didPan = false;
+    viewport.classList.add('panning');
+    panStart = { x: e.clientX, y: e.clientY, tx: transform.x, ty: transform.y };
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isPanning) return;
+    const dx = e.clientX - panStart.x;
+    const dy = e.clientY - panStart.y;
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) didPan = true;
+    transform.x = panStart.tx + dx;
+    transform.y = panStart.ty + dy;
+    applyTransform();
+  });
+
+  window.addEventListener('mouseup', () => {
+    isPanning = false;
+    viewport.classList.remove('panning');
+    setTimeout(() => { didPan = false; }, 50);
+  });
+
+  // Mouse wheel zoom
+  viewport.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = -e.deltaY * 0.001;
+    const newScale = Math.max(0.4, Math.min(3, transform.scale * (1 + delta)));
+    const scaleDelta = newScale / transform.scale;
+
+    // Zoom toward mouse position
+    transform.x = e.clientX - (e.clientX - transform.x) * scaleDelta;
+    transform.y = e.clientY - (e.clientY - transform.y) * scaleDelta;
+    transform.scale = newScale;
+    applyTransform();
+  }, { passive: false });
+
+  // Tap empty canvas to close active bucket
+  viewport.addEventListener('click', (e) => {
+    if (didPan) return;
+    if (activeBucket && !e.target.closest('.bucket')) {
+      closeActive();
+    }
+  });
+
+  // Reset button
+  resetBtn.addEventListener('click', () => {
+    transform = { ...initialTransform };
+    applyTransform();
+    if (activeBucket) closeActive();
+  });
+
+  // Double-tap to zoom in/out fast
+  let lastTapTime = 0;
+  let lastTapPos = { x: 0, y: 0 };
+  viewport.addEventListener('touchend', (e) => {
+    if (e.changedTouches.length !== 1) return;
+    const now = Date.now();
+    const touch = e.changedTouches[0];
+    const pos = { x: touch.clientX, y: touch.clientY };
+    const timeDiff = now - lastTapTime;
+    const distDiff = Math.hypot(pos.x - lastTapPos.x, pos.y - lastTapPos.y);
+
+    if (timeDiff < 300 && distDiff < 40 && !didPan) {
+      // Double tap — toggle between initial zoom and 2.5x zoom at tap point
+      const targetScale = transform.scale > initialTransform.scale * 1.5
+        ? initialTransform.scale
+        : initialTransform.scale * 2.5;
+      const scaleDelta = targetScale / transform.scale;
+      transform.x = pos.x - (pos.x - transform.x) * scaleDelta;
+      transform.y = pos.y - (pos.y - transform.y) * scaleDelta;
+      transform.scale = targetScale;
+      canvas.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)';
+      applyTransform();
+      setTimeout(() => { canvas.style.transition = ''; }, 320);
+      lastTapTime = 0;
+    } else {
+      lastTapTime = now;
+      lastTapPos = pos;
+    }
+  });
+
+  // Init
+  buildBuckets();
+  requestAnimationFrame(() => {
+    computeLayout();
+  });
+
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      fitToViewport();
+    }, 100);
+  });
+
+  window.addEventListener('orientationchange', () => {
+    setTimeout(() => {
+      fitToViewport();
+    }, 200);
+  });
+</script>
+
+</body>
+</html>
